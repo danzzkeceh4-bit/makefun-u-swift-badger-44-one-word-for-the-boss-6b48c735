@@ -13,6 +13,12 @@ import os
 import sys
 
 WORD = "Dementor"
+# Why this word: the boss who sucks all the joy out of the room the
+# moment he walks in, like a Dementor draining happiness. It is funny
+# at once with no explanation needed, true to a boss everyone has
+# had, and a fresh angle: the happiness-draining creature, not
+# another generic "strict" or "mean".
+
 
 OUTPUT_PATH = "/output/entry.txt"
 MIN_LENGTH = 1
@@ -26,6 +32,8 @@ def validate_word(word: str) -> str:
     - exactly one word, 1-30 characters, UTF-8 encodable
     - must not be empty or whitespace only
     - must not contain a newline
+    - must not contain any internal whitespace (exactly one token)
+    - must not contain control characters
 
     Returns the word on success, raises ValueError otherwise.
     """
@@ -40,6 +48,14 @@ def validate_word(word: str) -> str:
         )
     if "\n" in word or "\r" in word:
         raise ValueError("entry word must be a single word")
+    # Exactly one word: no internal whitespace, so "two words" can
+    # never slip through as a single entry.
+    if len(word.split()) != 1:
+        raise ValueError("entry word must be exactly one word")
+    # Control characters (tab, escape, ...) are invisible in the
+    # output file and would break the "one word" gate.
+    if any(ord(ch) < 0x20 for ch in word):
+        raise ValueError("entry word must not contain control characters")
     # UTF-8 round-trip check.
     word.encode("utf-8")
     return word
@@ -68,8 +84,21 @@ def main() -> int:
     # Read back and assert it matches the constant exactly.
     with open(OUTPUT_PATH, "r", encoding="utf-8", newline="") as f:
         written = f.read()
-    assert written == WORD, f"read-back mismatch: {written!r} != {WORD!r}"
+    # The assert message names both sides plus the byte count, so a
+    # mismatch is diagnosable from the traceback alone (no need to
+    # re-run and inspect the file by hand).
+    assert written == WORD, (
+        f"read-back mismatch: wrote {written!r} "
+        f"({len(written.encode('utf-8'))} bytes), expected {WORD!r}"
+    )
     assert MIN_LENGTH <= len(written) <= MAX_LENGTH
+    # The file must contain exactly the word: no trailing newline and
+    # no extra bytes. Byte length equals the UTF-8 encoding of the
+    # word, so a stray newline or BOM would fail here.
+    assert "\n" not in written and "\r" not in written
+    assert len(written.split()) == 1
+    assert written.encode("utf-8") == WORD.encode("utf-8")
+    assert os.path.getsize(OUTPUT_PATH) == len(WORD.encode("utf-8"))
     return 0
 
 
